@@ -1,169 +1,286 @@
+require("dotenv").config();
+
 const {
-    Client,
-    GatewayIntentBits,
-    PermissionFlagsBits,
-    ChannelType,
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    StringSelectMenuBuilder,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle
+  Client,
+  GatewayIntentBits,
+  PermissionFlagsBits,
+  ChannelType,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require("discord.js");
 
-const fs = require("fs");
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
 
 // ===============================
 // CONFIGURAÇÃO
 // ===============================
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
-const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
-const CATEGORY_ID = process.env.CATEGORY_ID;
+const comandos = [
+
+  // BAN
+  new SlashCommandBuilder()
+    .setName("ban")
+    .setDescription("Banir um membro")
+    .addUserOption(option =>
+      option
+        .setName("membro")
+        .setDescription("Membro que será banido")
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("motivo")
+        .setDescription("Motivo do banimento")
+        .setRequired(false)
+    ),
+
+  // MUTE
+  new SlashCommandBuilder()
+    .setName("mute")
+    .setDescription("Silenciar um membro")
+    .addUserOption(option =>
+      option
+        .setName("membro")
+        .setDescription("Membro que será silenciado")
+        .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("minutos")
+        .setDescription("Tempo em minutos")
+        .setRequired(true)
+        .setMinValue(1)
+        .setMaxValue(40320)
+    )
+    .addStringOption(option =>
+      option
+        .setName("motivo")
+        .setDescription("Motivo")
+        .setRequired(false)
+    ),
+
+  // EXPULSAR
+  new SlashCommandBuilder()
+    .setName("expulsar")
+    .setDescription("Expulsar um membro")
+    .addUserOption(option =>
+      option
+        .setName("membro")
+        .setDescription("Membro que será expulso")
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("motivo")
+        .setDescription("Motivo da expulsão")
+        .setRequired(false)
+    ),
+
+  // CASTIGO
+  new SlashCommandBuilder()
+    .setName("castigo")
+    .setDescription("Aplicar castigo a um membro")
+    .addUserOption(option =>
+      option
+        .setName("membro")
+        .setDescription("Membro")
+        .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("minutos")
+        .setDescription("Duração em minutos")
+        .setRequired(true)
+        .setMinValue(1)
+        .setMaxValue(40320)
+    )
+    .addStringOption(option =>
+      option
+        .setName("motivo")
+        .setDescription("Motivo do castigo")
+        .setRequired(false)
+    ),
+
+  // LOCK
+  new SlashCommandBuilder()
+    .setName("lock")
+    .setDescription("Bloquear o canal atual"),
+
+  // UNLOCK
+  new SlashCommandBuilder()
+    .setName("unlock")
+    .setDescription("Desbloquear o canal atual"),
+
+  // EMBED
+  new SlashCommandBuilder()
+    .setName("embed")
+    .setDescription("Enviar uma mensagem embed")
+    .addStringOption(option =>
+      option
+        .setName("titulo")
+        .setDescription("Título do embed")
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("mensagem")
+        .setDescription("Mensagem do embed")
+        .setRequired(true)
+    ),
+
+  // TICKET
+  new SlashCommandBuilder()
+    .setName("ticket")
+    .setDescription("Criar o painel de tickets")
+];
 
 // ===============================
-// BOT
+// FUNÇÕES
 // ===============================
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences
+function isStaff(member) {
+  return (
+    member.permissions.has(PermissionFlagsBits.Administrator) ||
+    member.permissions.has(PermissionFlagsBits.ManageChannels)
+  );
+}
+
+function painelTicket() {
+  const embed = new EmbedBuilder()
+    .setTitle("🎫 Atendimento")
+    .setDescription(
+      "Selecione abaixo o motivo do seu atendimento.\n\n" +
+
+      "📮 **Denúncias**\n" +
+      "Abusos xingamentos falas inapropriadas\n\n" +
+
+      "❓ **Dúvidas**\n" +
+      "Tire dúvidas Sobre o jogo Do servidor etc\n\n" +
+
+      "🛒 **Compra**\n" +
+      "Aqui você poderá comprar W ou até mesmo Nicks coloridos após abrir o ticket a resposta será direta sobre o valor dos produtos\n\n" +
+
+      "🛡️ **Suporte**\n" +
+      "Caso tenha bugs no jogo ou Algo do tipo abra q iremos resolver"
+    )
+    .setFooter({
+      text: "Selecione uma opção abaixo para abrir seu ticket."
+    });
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("abrir_ticket")
+    .setPlaceholder("Selecione o motivo do atendimento")
+    .addOptions(
+      {
+        label: "Denúncias",
+        description: "Denúncias, abusos e xingamentos",
+        value: "denuncias",
+        emoji: "📮"
+      },
+      {
+        label: "Dúvidas",
+        description: "Tire suas dúvidas",
+        value: "duvidas",
+        emoji: "❓"
+      },
+      {
+        label: "Compra",
+        description: "Compras e nicks coloridos",
+        value: "compra",
+        emoji: "🛒"
+      },
+      {
+        label: "Suporte",
+        description: "Bugs e problemas",
+        value: "suporte",
+        emoji: "🛡️"
+      }
+    );
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(menu)
     ]
-});
-
-// ===============================
-// BANCO DE DADOS
-// ===============================
-
-const arquivo = "./partidas.json";
-
-let partidas = {};
-
-if (fs.existsSync(arquivo)) {
-    try {
-        partidas = JSON.parse(
-            fs.readFileSync(arquivo, "utf8")
-        );
-    } catch {
-        partidas = {};
-    }
+  };
 }
 
-function salvar() {
-    fs.writeFileSync(
-        arquivo,
-        JSON.stringify(partidas, null, 2)
-    );
+function botoesTicket() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("fechar_ticket")
+        .setLabel("Fechar")
+        .setEmoji("🔒")
+        .setStyle(ButtonStyle.Danger),
+
+      new ButtonBuilder()
+        .setCustomId("painel_staff")
+        .setLabel("Painel Staff")
+        .setEmoji("🛡️")
+        .setStyle(ButtonStyle.Primary),
+
+      new ButtonBuilder()
+        .setCustomId("painel_membro")
+        .setLabel("Painel Membro")
+        .setEmoji("👤")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  ];
 }
 
-// ===============================
-// TAMANHO DO MODO
-// ===============================
+function painelStaff() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("adicionar_membro")
+      .setLabel("Adicionar membro")
+      .setEmoji("➕")
+      .setStyle(ButtonStyle.Success),
 
-function tamanhoTime(modo) {
-    if (modo === "1v1") return 1;
-    if (modo === "2v2") return 2;
-    if (modo === "3v3") return 3;
-    return 1;
+    new ButtonBuilder()
+      .setCustomId("retirar_membro")
+      .setLabel("Retirar membro")
+      .setEmoji("➖")
+      .setStyle(ButtonStyle.Danger),
+
+    new ButtonBuilder()
+      .setCustomId("notificar_membro")
+      .setLabel("Notificar membro")
+      .setEmoji("🔔")
+      .setStyle(ButtonStyle.Primary)
+  );
 }
 
-// ===============================
-// STAFF
-// ===============================
-
-function staff(member) {
-    if (!member) return false;
-
-    return (
-        member.permissions.has(
-            PermissionFlagsBits.Administrator
-        ) ||
-        member.roles.cache.has(STAFF_ROLE_ID)
-    );
+function painelMembro() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("notificar_staff")
+      .setLabel("Notificar staff")
+      .setEmoji("🔔")
+      .setStyle(ButtonStyle.Primary)
+  );
 }
 
-// ===============================
-// EMBED DA PARTIDA
-// ===============================
+function nomeMotivo(motivo) {
+  const nomes = {
+    denuncias: "Denúncias",
+    duvidas: "Dúvidas",
+    compra: "Compra",
+    suporte: "Suporte"
+  };
 
-function partidaEmbed(p) {
-
-    const time1 =
-        p.time1.length
-            ? p.time1.map(x => `<@${x}>`).join("\n")
-            : "Aguardando jogador...";
-
-    const time2 =
-        p.time2.length
-            ? p.time2.map(x => `<@${x}>`).join("\n")
-            : "Aguardando jogador...";
-
-    return new EmbedBuilder()
-        .setTitle("🎮 APOSTA / PARTIDA")
-        .setDescription(
-            p.mensagem ||
-            "Entre em um dos times abaixo."
-        )
-        .addFields(
-            {
-                name: "💰 Valor",
-                value: `R$ ${p.valor}`,
-                inline: true
-            },
-            {
-                name: "🎮 Modo",
-                value: p.modo,
-                inline: true
-            },
-            {
-                name: "🖥️ Plataforma",
-                value: p.plataforma,
-                inline: true
-            },
-            {
-                name: "🔵 TIME 1",
-                value: time1,
-                inline: true
-            },
-            {
-                name: "🔴 TIME 2",
-                value: time2,
-                inline: true
-            }
-        )
-        .setFooter({
-            text: `Partida #${p.id}`
-        });
-}
-
-// ===============================
-// BOTÕES DA PARTIDA
-// ===============================
-
-function botoesPartida(id) {
-
-    return new ActionRowBuilder()
-        .addComponents(
-
-            new ButtonBuilder()
-                .setCustomId(`time1_${id}`)
-                .setLabel("Entrar no Time 1")
-                .setEmoji("🔵")
-                .setStyle(ButtonStyle.Primary),
-
-            new ButtonBuilder()
-                .setCustomId(`time2_${id}`)
-                .setLabel("Entrar no Time 2")
-                .setEmoji("🔴")
-                .setStyle(ButtonStyle.Danger)
-
-        );
+  return nomes[motivo] || "Atendimento";
 }
 
 // ===============================
@@ -171,233 +288,107 @@ function botoesPartida(id) {
 // ===============================
 
 client.once("ready", async () => {
+  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
 
-    console.log(
-        `✅ Bot online: ${client.user.tag}`
+  try {
+    const rest = new REST({ version: "10" })
+      .setToken(process.env.DISCORD_TOKEN);
+
+    await rest.put(
+      Routes.applicationGuildCommands(
+        client.user.id,
+        process.env.GUILD_ID
+      ),
+      {
+        body: comandos.map(command => command.toJSON())
+      }
     );
 
-    try {
-
-        const guild =
-            await client.guilds.fetch(GUILD_ID);
-
-        await guild.commands.set([
-
-            {
-                name: "painel",
-                description:
-                    "Abrir painel de partidas"
-            },
-
-            {
-                name: "staff",
-                description:
-                    "Abrir painel da Staff"
-            },
-
-            {
-                name: "cancelar",
-                description:
-                    "Cancelar uma partida",
-                options: [
-                    {
-                        name: "partida",
-                        description:
-                            "Número da partida",
-                        type: 3,
-                        required: true
-                    }
-                ]
-            }
-
-        ]);
-
-        console.log("✅ Comandos registrados!");
-
-    } catch (erro) {
-
-        console.log(
-            "❌ Erro registrando comandos:",
-            erro
-        );
-
-    }
-
+    console.log("✅ COMANDOS REGISTRADOS!");
+  } catch (erro) {
+    console.error("❌ ERRO AO REGISTRAR COMANDOS:", erro);
+  }
 });
 
 // ===============================
 // INTERAÇÕES
 // ===============================
 
-client.on(
-    "interactionCreate",
-    async interaction => {
+client.on("interactionCreate", async interaction => {
 
-        // ===========================
-        // /PAINEL
-        // ===========================
+  try {
 
-        if (
-            interaction.isChatInputCommand() &&
-            interaction.commandName === "painel"
-        ) {
+    // =================================
+    // COMANDOS
+    // =================================
 
-            const botao =
-                new ButtonBuilder()
-                    .setCustomId("criar")
-                    .setLabel("Criar partida")
-                    .setEmoji("🎮")
-                    .setStyle(
-                        ButtonStyle.Success
-                    );
+    if (interaction.isChatInputCommand()) {
 
-            const row =
-                new ActionRowBuilder()
-                    .addComponents(botao);
+      // -------------------------------
+      // BAN
+      // -------------------------------
 
-            const embed =
-                new EmbedBuilder()
-                    .setTitle(
-                        "🎮 PAINEL DE PARTIDAS"
-                    )
-                    .setDescription(
-                        "Clique em **Criar partida** para abrir uma nova partida."
-                    );
+      if (interaction.commandName === "ban") {
 
-            await interaction.reply({
-                embeds: [embed],
-                components: [row]
-            });
-
-            return;
+        if (!isStaff(interaction.member)) {
+          return interaction.reply({
+            content: "❌ Apenas staff pode usar este comando.",
+            ephemeral: true
+          });
         }
 
-        // ===========================
-        // /STAFF
-        // ===========================
+        const membro = interaction.options.getMember("membro");
+        const motivo =
+          interaction.options.getString("motivo") ||
+          "Nenhum motivo informado.";
 
-        if (
-            interaction.isChatInputCommand() &&
-            interaction.commandName === "staff"
-        ) {
-
-            if (!staff(interaction.member)) {
-
-                await interaction.reply({
-                    content:
-                        "❌ Apenas Staffs podem usar este comando.",
-                    ephemeral: true
-                });
-
-                return;
-            }
-
-            const lista =
-                Object.values(partidas)
-                    .filter(
-                        p =>
-                            p.status ===
-                            "aguardando" ||
-                            p.status ===
-                            "andamento"
-                    );
-
-            if (!lista.length) {
-
-                await interaction.reply({
-                    content:
-                        "📭 Não existem partidas ativas.",
-                    ephemeral: true
-                });
-
-                return;
-            }
-
-            const opcoes =
-                lista.slice(0, 25).map(p => ({
-                    label:
-                        `Partida #${p.id} - ${p.modo}`,
-                    description:
-                        `${p.time1.length + p.time2.length} jogadores`,
-                    value: p.id
-                }));
-
-            const menu =
-                new StringSelectMenuBuilder()
-                    .setCustomId(
-                        "staff_partida"
-                    )
-                    .setPlaceholder(
-                        "Escolha uma partida"
-                    )
-                    .addOptions(opcoes);
-
-            await interaction.reply({
-                content:
-                    "👮 **PAINEL STAFF**\nEscolha uma partida:",
-                components: [
-                    new ActionRowBuilder()
-                        .addComponents(menu)
-                ],
-                ephemeral: true
-            });
-
-            return;
+        if (!membro) {
+          return interaction.reply({
+            content: "❌ Não encontrei esse membro.",
+            ephemeral: true
+          });
         }
 
-        // ===========================
-        // /CANCELAR
-        // ===========================
+        if (!membro.bannable) {
+          return interaction.reply({
+            content: "❌ Não posso banir esse membro.",
+            ephemeral: true
+          });
+        }
 
-        if (
-            interaction.isChatInputCommand() &&
-            interaction.commandName === "cancelar"
-        ) {
+        await membro.ban({ reason: motivo });
 
-            if (!staff(interaction.member)) {
+        return interaction.reply(
+          `🔨 **${membro.user.tag}** foi banido.\n**Motivo:** ${motivo}`
+        );
+      }
 
-                await interaction.reply({
-                    content:
-                        "❌ Apenas Staffs podem usar este comando.",
-                    ephemeral: true
-                });
+      // -------------------------------
+      // MUTE
+      // -------------------------------
 
-                return;
-            }
+      if (interaction.commandName === "mute") {
 
-            const id =
-                interaction.options.getString(
-                    "partida"
-                );
+        if (!isStaff(interaction.member)) {
+          return interaction.reply({
+            content: "❌ Apenas staff pode usar este comando.",
+            ephemeral: true
+          });
+        }
 
-            const p = partidas[id];
+        const membro = interaction.options.getMember("membro");
+        const minutos = interaction.options.getInteger("minutos");
+        const motivo =
+          interaction.options.getString("motivo") ||
+          "Nenhum motivo informado.";
 
-            if (!p) {
+        if (!membro) {
+          return interaction.reply({
+            content: "❌ Não encontrei esse membro.",
+            ephemeral: true
+          });
+        }
 
-                await interaction.reply({
-                    content:
-                        "❌ Partida não encontrada.",
-                    ephemeral: true
-                });
-
-                return;
-            }
-
-            p.status = "cancelada";
-
-            salvar();
-
-            if (p.channelId) {
-
-                const canal =
-                    interaction.guild.channels.cache.get(
-                        p.channelId
-                    );
-
-                if (canal) {
-
-                    await canal.send(
-                        "❌ **Partida cancelada pela Staff.**"
-                    );
-
-                    setTimeout
+        if (!membro.moderatable) {
+          return interaction.reply({
+            content: "❌ Não posso silenciar esse membro
