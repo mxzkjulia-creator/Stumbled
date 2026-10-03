@@ -1,0 +1,1 @@
+Versão sem Privileged Gateway Intents. Railway: DISCORD_TOKEN e GUILD_ID. /painel cria a fila; ao completar mostra Time 1/Time 2 e somente staff pode votar nos botões; /cancelar é somente staff e fecha o canal.
