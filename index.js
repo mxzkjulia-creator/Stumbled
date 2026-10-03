@@ -137,5 +137,5 @@ function ticketPanel() {
       "❓ **Dúvidas**\n" +
       "Tire dúvidas Sobre o jogo Do servidor etc\n\n" +
       "🛒 **Compra**\n" +
-      "Aqui você poderá comprar W ou até mesmo Nicks coloridos após abrir o ticket a resposta será direta sobre o valor dos produtos\n\n" +
-      "🛡️
+      ""HERE você poderá comprar W ou até mesmo Nicks coloridos após abrir o ticket a resposta será direta sobre o valor dos produtos\n\n" +
+"🛡️" +
