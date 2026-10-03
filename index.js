@@ -3,9 +3,9 @@ require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
+  SlashCommandBuilder,
   REST,
   Routes,
-  SlashCommandBuilder,
   PermissionFlagsBits,
   ChannelType,
   EmbedBuilder,
@@ -18,29 +18,19 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-const queues = new Map();
-const privateMatches = new Map();
+const filas = new Map();
+const partidas = new Map();
 
-const INACTIVITY_MS = 180000;
-
-// ==========================
-// COMANDOS
-// ==========================
-
-const commands = [
+const comandos = [
   new SlashCommandBuilder()
     .setName("painel")
     .setDescription("Criar painel de aposta")
     .addStringOption(o =>
-      o
-        .setName("valor")
-        .setDescription("Valor da aposta")
-        .setRequired(true)
+      o.setName("valor").setDescription("Valor da aposta").setRequired(true)
     )
     .addStringOption(o =>
-      o
-        .setName("modo")
-        .setDescription("Modo da partida")
+      o.setName("modo")
+        .setDescription("Modo")
         .setRequired(true)
         .addChoices(
           { name: "1v1", value: "1v1" },
@@ -49,8 +39,7 @@ const commands = [
         )
     )
     .addStringOption(o =>
-      o
-        .setName("plataforma")
+      o.setName("plataforma")
         .setDescription("Plataforma")
         .setRequired(true)
         .addChoices(
@@ -60,56 +49,44 @@ const commands = [
         )
     )
     .addStringOption(o =>
-      o
-        .setName("mensagem")
-        .setDescription("Nome do mapa")
-        .setRequired(true)
+      o.setName("mensagem").setDescription("Mapa").setRequired(true)
     ),
 
   new SlashCommandBuilder()
     .setName("cancelar")
-    .setDescription("Cancelar a partida atual")
+    .setDescription("Cancelar partida")
 ];
 
-// ==========================
-// STAFF
-// ==========================
-
-function isStaff(member) {
+function staff(m) {
   return (
-    member.permissions.has(PermissionFlagsBits.Administrator) ||
-    member.permissions.has(PermissionFlagsBits.ManageChannels)
+    m.permissions.has(PermissionFlagsBits.Administrator) ||
+    m.permissions.has(PermissionFlagsBits.ManageChannels)
   );
 }
 
-// ==========================
-// PAINEL DA FILA
-// ==========================
-
-function queueEmbed(match) {
+function filaEmbed(m) {
   return new EmbedBuilder()
     .setTitle("🎯 Apostas")
     .setDescription(
-      `**Mapa:** ${match.map}\n` +
-      `**Modo:** ${match.mode}\n` +
-      `**Plataforma:** ${match.platform}\n` +
-      `**Valor:** ${match.value}\n\n` +
-      `👥 **Jogadores:** ${match.players.length}/${match.maxPlayers}\n\n` +
+      `**Mapa:** ${m.mapa}\n` +
+      `**Modo:** ${m.modo}\n` +
+      `**Plataforma:** ${m.plataforma}\n` +
+      `**Valor:** ${m.valor} por jogador\n\n` +
+      `👥 **Jogadores:** ${m.jogadores.length}/${m.max}\n\n` +
       `Clique em **Entrar** para participar.`
     );
 }
 
-function queueButtons() {
+function filaBotoes() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("join")
+        .setCustomId("entrar")
         .setLabel("Entrar")
         .setEmoji("✅")
         .setStyle(ButtonStyle.Success),
-
       new ButtonBuilder()
-        .setCustomId("leave")
+        .setCustomId("sair")
         .setLabel("Sair")
         .setEmoji("❌")
         .setStyle(ButtonStyle.Danger)
@@ -117,72 +94,97 @@ function queueButtons() {
   ];
 }
 
-// ==========================
-// PAINEL DA PARTIDA
-// ==========================
-
-function matchEmbed(match) {
-  const half = Math.ceil(match.players.length / 2);
-
-  const team1 = match.players
-    .slice(0, half)
-    .map(id => `<@${id}>`)
-    .join("\n");
-
-  const team2 = match.players
-    .slice(half)
-    .map(id => `<@${id}>`)
-    .join("\n");
+function partidaEmbed(m) {
+  const meio = Math.ceil(m.jogadores.length / 2);
+  const time1 = m.jogadores.slice(0, meio).map(x => `<@${x}>`).join("\n");
+  const time2 = m.jogadores.slice(meio).map(x => `<@${x}>`).join("\n");
 
   return new EmbedBuilder()
     .setTitle("🎮 Partida encontrada!")
     .setDescription(
-      `**Mapa:** ${match.map}\n` +
-      `**Modo:** ${match.mode}\n` +
-      `**Plataforma:** ${match.platform}\n` +
-      `**Valor (por jogador):** ${match.value}\n` +
-      `**Mediador:** <@${match.mediator}>\n\n` +
-
-      `🔵 **Time 1**\n` +
-      `${team1 || "Ninguém"}\n\n` +
-
-      `🔴 **Time 2**\n` +
-      `${team2 || "Ninguém"}\n\n` +
-
+      `**Mapa:** ${m.mapa}\n` +
+      `**Modo:** ${m.modo}\n` +
+      `**Plataforma:** ${m.plataforma}\n` +
+      `**Valor (por jogador):** ${m.valor}\n` +
+      `**Mediador:** <@${m.mediador}>\n\n` +
+      `🔵 **Time 1**\n${time1}\n\n` +
+      `🔴 **Time 2**\n${time2}\n\n` +
       `📜 **Regras**\n` +
       `• Joguem a partida normalmente.\n` +
       `• Enviem o print do resultado aqui.\n` +
       `• Somente a staff pode confirmar o vencedor.\n` +
-      `• Se alguém ficar mais de 3 minutos sem responder, chame a staff.`
+      `• Se alguém ficar 3 minutos sem responder, chame a staff.`
     );
 }
 
-function winnerButtons() {
+function vencedorBotoes() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("w1")
+        .setCustomId("time1")
         .setLabel("Venceu: Time 1")
         .setStyle(ButtonStyle.Primary),
-
       new ButtonBuilder()
-        .setCustomId("w2")
+        .setCustomId("time2")
         .setLabel("Venceu: Time 2")
         .setStyle(ButtonStyle.Danger)
     )
   ];
 }
 
-// ==========================
-// CRIAR CANAL PRIVADO
-// ==========================
-
-async function createPrivateChannel(match, guild) {
-  const overwrites = [
+async function criarPartida(m, guild) {
+  const permissoes = [
     {
       id: guild.roles.everyone.id,
       deny: [PermissionFlagsBits.ViewChannel]
     },
+    {
+      id: m.mediador,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    },
+    {
+      id: client.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageChannels
+      ]
+    }
+  ];
 
-    // Jogadores
-   
+  for (const id of m.jogadores) {
+    permissoes.push({
+      id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    });
+  }
+
+  return await guild.channels.create({
+    name: `🔒・partida-${m.modo}`,
+    type: ChannelType.GuildText,
+    permissionOverwrites: permissoes
+  });
+}
+
+client.once("ready", async () => {
+  console.log(`✅ Bot online: ${client.user.tag}`);
+
+  const rest = new REST({ version: "10" })
+    .setToken(process.env.DISCORD_TOKEN);
+
+  await rest.put(
+    Routes.applicationGuildCommands(
+      client.user.id,
+      process.env.GUILD_ID
+    ),
+    {
+      body: comandos.map
