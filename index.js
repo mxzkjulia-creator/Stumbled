@@ -1,9 +1,17 @@
 require("dotenv").config();
 
 const {
-  Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes,
-  PermissionFlagsBits, ChannelType, EmbedBuilder,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle
+  Client,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  PermissionFlagsBits,
+  ChannelType,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require("discord.js");
 
 const client = new Client({
@@ -13,15 +21,19 @@ const client = new Client({
 const filas = new Map();
 const partidas = new Map();
 
-const commands = [
+const comandos = [
   new SlashCommandBuilder()
     .setName("painel")
     .setDescription("Criar painel de aposta")
     .addStringOption(o =>
-      o.setName("valor").setDescription("Valor").setRequired(true)
+      o.setName("valor")
+        .setDescription("Valor da aposta")
+        .setRequired(true)
     )
     .addStringOption(o =>
-      o.setName("modo").setDescription("Modo").setRequired(true)
+      o.setName("modo")
+        .setDescription("Modo")
+        .setRequired(true)
         .addChoices(
           { name: "1v1", value: "1v1" },
           { name: "2v2", value: "2v2" },
@@ -29,7 +41,9 @@ const commands = [
         )
     )
     .addStringOption(o =>
-      o.setName("plataforma").setDescription("Plataforma").setRequired(true)
+      o.setName("plataforma")
+        .setDescription("Plataforma")
+        .setRequired(true)
         .addChoices(
           { name: "PC", value: "PC" },
           { name: "Mobile", value: "Mobile" },
@@ -37,7 +51,9 @@ const commands = [
         )
     )
     .addStringOption(o =>
-      o.setName("mensagem").setDescription("Mapa").setRequired(true)
+      o.setName("mensagem")
+        .setDescription("Mapa")
+        .setRequired(true)
     ),
 
   new SlashCommandBuilder()
@@ -45,41 +61,20 @@ const commands = [
     .setDescription("Cancelar partida")
 ];
 
-const staff = m =>
-  m.permissions.has(PermissionFlagsBits.Administrator) ||
-  m.permissions.has(PermissionFlagsBits.ManageChannels);
+function isStaff(member) {
+  return (
+    member.permissions.has(PermissionFlagsBits.Administrator) ||
+    member.permissions.has(PermissionFlagsBits.ManageChannels)
+  );
+}
 
-const filaBotoes = () => [
-  new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("entrar")
-      .setLabel("Entrar")
-      .setEmoji("✅")
-      .setStyle(ButtonStyle.Success),
+function limite(modo) {
+  if (modo === "1v1") return 2;
+  if (modo === "2v2") return 4;
+  return 6;
+}
 
-    new ButtonBuilder()
-      .setCustomId("sair")
-      .setLabel("Sair")
-      .setEmoji("❌")
-      .setStyle(ButtonStyle.Danger)
-  )
-];
-
-const vencedorBotoes = () => [
-  new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("time1")
-      .setLabel("Venceu: Time 1")
-      .setStyle(ButtonStyle.Primary),
-
-    new ButtonBuilder()
-      .setCustomId("time2")
-      .setLabel("Venceu: Time 2")
-      .setStyle(ButtonStyle.Danger)
-  )
-];
-
-function filaEmbed(m) {
+function painelEmbed(m) {
   return new EmbedBuilder()
     .setTitle("🎯 Apostas")
     .setDescription(
@@ -87,22 +82,58 @@ function filaEmbed(m) {
       `**Modo:** ${m.modo}\n` +
       `**Plataforma:** ${m.plataforma}\n` +
       `**Valor:** ${m.valor} por jogador\n\n` +
-      `👥 **Jogadores:** ${m.jogadores.length}/${m.max}\n\n` +
+      `👥 **Jogadores:** ${m.jogadores.size}/${m.max}\n\n` +
       `Clique em **Entrar** para participar.`
     );
 }
 
-function partidaEmbed(m) {
-  const meio = Math.ceil(m.jogadores.length / 2);
+function botoesFila() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("entrar_aposta")
+        .setLabel("Entrar")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
 
-  const time1 = m.jogadores
-    .slice(0, meio)
-    .map(x => `<@${x}>`)
+      new ButtonBuilder()
+        .setCustomId("sair_aposta")
+        .setLabel("Sair")
+        .setEmoji("❌")
+        .setStyle(ButtonStyle.Danger)
+    )
+  ];
+}
+
+function botoesVencedor() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("vencedor_time1")
+        .setLabel("Venceu: Time 1")
+        .setStyle(ButtonStyle.Primary),
+
+      new ButtonBuilder()
+        .setCustomId("vencedor_time2")
+        .setLabel("Venceu: Time 2")
+        .setStyle(ButtonStyle.Danger)
+    )
+  ];
+}
+
+function partidaEmbed(m) {
+  const jogadores = [...m.jogadores.keys()];
+
+  const metade = Math.ceil(jogadores.length / 2);
+
+  const time1 = jogadores
+    .slice(0, metade)
+    .map(id => `<@${id}>`)
     .join("\n");
 
-  const time2 = m.jogadores
-    .slice(meio)
-    .map(x => `<@${x}>`)
+  const time2 = jogadores
+    .slice(metade)
+    .map(id => `<@${id}>`)
     .join("\n");
 
   return new EmbedBuilder()
@@ -113,17 +144,22 @@ function partidaEmbed(m) {
       `**Plataforma:** ${m.plataforma}\n` +
       `**Valor (por jogador):** ${m.valor}\n` +
       `**Mediador:** <@${m.mediador}>\n\n` +
-      `🔵 **Time 1**\n${time1}\n\n` +
-      `🔴 **Time 2**\n${time2}\n\n` +
+
+      `🔵 **Time 1**\n` +
+      `${time1 || "Nenhum"}\n\n` +
+
+      `🔴 **Time 2**\n` +
+      `${time2 || "Nenhum"}\n\n` +
+
       `📜 **Regras**\n` +
-      `• Joguem normalmente.\n` +
+      `• Joguem a partida normalmente.\n` +
       `• Enviem o print do resultado aqui.\n` +
-      `• Somente staff confirma o vencedor.\n` +
-      `• Após 3 minutos sem resposta, chame a staff.`
+      `• Somente a staff pode confirmar o vencedor.\n` +
+      `• Se alguém ficar 3 minutos sem responder, chame a staff.`
     );
 }
 
-async function criarPartida(m, guild) {
+async function criarCanalPartida(m, guild) {
   const permissoes = [
     {
       id: guild.roles.everyone.id,
@@ -150,9 +186,9 @@ async function criarPartida(m, guild) {
     }
   ];
 
-  for (const id of m.jogadores) {
+  for (const id of m.jogadores.keys()) {
     permissoes.push({
-      id,
+      id: id,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -161,7 +197,7 @@ async function criarPartida(m, guild) {
     });
   }
 
-  return guild.channels.create({
+  return await guild.channels.create({
     name: `🔒・partida-${m.modo}`,
     type: ChannelType.GuildText,
     permissionOverwrites: permissoes
@@ -169,7 +205,7 @@ async function criarPartida(m, guild) {
 }
 
 client.once("ready", async () => {
-  console.log(`✅ Bot online: ${client.user.tag}`);
+  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
 
   const rest = new REST({ version: "10" })
     .setToken(process.env.DISCORD_TOKEN);
@@ -180,175 +216,269 @@ client.once("ready", async () => {
       process.env.GUILD_ID
     ),
     {
-      body: commands.map(x => x.toJSON())
+      body: comandos.map(c => c.toJSON())
     }
   );
 
-  console.log("✅ Comandos registrados!");
+  console.log("✅ COMANDOS REGISTRADOS!");
 });
 
-client.on("interactionCreate", async i => {
+client.on("interactionCreate", async interaction => {
   try {
 
-    if (i.isChatInputCommand() && i.commandName === "painel") {
-      if (!staff(i.member)) {
-        return i.reply({
-          content: "❌ Apenas staff pode usar.",
+    // =========================
+    // /PAINEL
+    // =========================
+
+    if (
+      interaction.isChatInputCommand() &&
+      interaction.commandName === "painel"
+    ) {
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
+          content: "❌ Apenas staff pode usar este comando.",
           ephemeral: true
         });
       }
 
-      const modo = i.options.getString("modo");
+      const modo = interaction.options.getString("modo");
 
-      const m = {
-        valor: i.options.getString("valor"),
-        modo,
-        plataforma: i.options.getString("plataforma"),
-        mapa: i.options.getString("mensagem"),
-        max: modo === "1v1" ? 2 : modo === "2v2" ? 4 : 6,
-        jogadores: [],
-        mediador: i.user.id
+      const aposta = {
+        valor: interaction.options.getString("valor"),
+        modo: modo,
+        plataforma: interaction.options.getString("plataforma"),
+        mapa: interaction.options.getString("mensagem"),
+        max: limite(modo),
+
+        // MAPA DE JOGADORES
+        jogadores: new Map(),
+
+        mediador: interaction.user.id
       };
 
-      const msg = await i.channel.send({
-        embeds: [filaEmbed(m)],
-        components: filaBotoes()
+      const mensagem = await interaction.channel.send({
+        embeds: [painelEmbed(aposta)],
+        components: botoesFila()
       });
 
-      filas.set(msg.id, m);
+      filas.set(mensagem.id, aposta);
 
-      return i.reply({
+      return interaction.reply({
         content: "✅ Painel criado!",
         ephemeral: true
       });
     }
 
-    if (i.isChatInputCommand() && i.commandName === "cancelar") {
-      if (!staff(i.member)) {
-        return i.reply({
+    // =========================
+    // /CANCELAR
+    // =========================
+
+    if (
+      interaction.isChatInputCommand() &&
+      interaction.commandName === "cancelar"
+    ) {
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
           content: "❌ Apenas staff pode cancelar.",
           ephemeral: true
         });
       }
 
-      const m = partidas.get(i.channel.id);
+      const partida = partidas.get(interaction.channel.id);
 
-      if (!m) {
-        return i.reply({
-          content: "❌ Este canal não é uma partida.",
+      if (!partida) {
+        return interaction.reply({
+          content: "❌ Este canal não é uma partida ativa.",
           ephemeral: true
         });
       }
 
-      await i.reply("🔒 Partida cancelada. Fechando...");
+      await interaction.reply(
+        "🔒 Partida cancelada. O canal será fechado."
+      );
 
-      partidas.delete(i.channel.id);
+      partidas.delete(interaction.channel.id);
 
       setTimeout(() => {
-        i.channel.delete().catch(() => {});
+        interaction.channel.delete().catch(() => {});
       }, 1500);
 
       return;
     }
 
-    if (!i.isButton()) return;
+    if (!interaction.isButton()) return;
 
-    if (i.customId === "entrar" || i.customId === "sair") {
-      const m = filas.get(i.message.id);
+    // =========================
+    // ENTRAR
+    // =========================
 
-      if (!m) {
-        return i.reply({
+    if (interaction.customId === "entrar_aposta") {
+
+      const aposta = filas.get(interaction.message.id);
+
+      if (!aposta) {
+        return interaction.reply({
           content: "❌ Esta fila não está mais ativa.",
           ephemeral: true
         });
       }
 
-      const id = String(i.user.id);
+      // ID REAL DE QUEM CLICOU
+      const jogadorId = interaction.user.id;
 
-      if (i.customId === "entrar") {
-        if (m.jogadores.includes(id)) {
-          return i.reply({
-            content: "❌ Você já está na fila.",
-            ephemeral: true
-          });
-        }
+      console.log(
+        `🟢 BOTÃO ENTRAR: ${interaction.user.username} | ID: ${jogadorId}`
+      );
 
-        if (m.jogadores.length >= m.max) {
-          return i.reply({
-            content: "❌ A partida já está cheia.",
-            ephemeral: true
-          });
-        }
-
-        m.jogadores.push(id);
-
-        if (m.jogadores.length < m.max) {
-          return i.update({
-            embeds: [filaEmbed(m)],
-            components: filaBotoes()
-          });
-        }
-
-        await i.deferUpdate();
-
-        const canal = await criarPartida(m, i.guild);
-
-        partidas.set(canal.id, m);
-
-        await canal.send({
-          content: m.jogadores.map(x => `<@${x}>`).join(" "),
-          embeds: [partidaEmbed(m)],
-          components: vencedorBotoes()
+      // VERIFICA SOMENTE O ID DO USUÁRIO
+      if (aposta.jogadores.has(jogadorId)) {
+        return interaction.reply({
+          content: "❌ Você já está na fila.",
+          ephemeral: true
         });
-
-        await i.message.edit({
-          content: `✅ Partida criada: ${canal}`,
-          embeds: [],
-          components: []
-        });
-
-        filas.delete(i.message.id);
-
-        return;
       }
 
-      const pos = m.jogadores.indexOf(id);
+      if (aposta.jogadores.size >= aposta.max) {
+        return interaction.reply({
+          content: "❌ A partida já está cheia.",
+          ephemeral: true
+        });
+      }
 
-      if (pos < 0) {
-        return i.reply({
+      // ADICIONA O USUÁRIO
+      aposta.jogadores.set(
+        jogadorId,
+        interaction.user.username
+      );
+
+      console.log(
+        `✅ ENTROU: ${interaction.user.username}`
+      );
+
+      console.log(
+        `👥 JOGADORES:`,
+        [...aposta.jogadores.entries()]
+      );
+
+      // AINDA NÃO ENCHEU
+      if (aposta.jogadores.size < aposta.max) {
+        return interaction.update({
+          embeds: [painelEmbed(aposta)],
+          components: botoesFila()
+        });
+      }
+
+      // =========================
+      // PARTIDA CHEIA
+      // =========================
+
+      await interaction.deferUpdate();
+
+      const canal = await criarCanalPartida(
+        aposta,
+        interaction.guild
+      );
+
+      partidas.set(canal.id, aposta);
+
+      const jogadores = [...aposta.jogadores.keys()];
+
+      await canal.send({
+        content: jogadores
+          .map(id => `<@${id}>`)
+          .join(" "),
+
+        embeds: [partidaEmbed(aposta)],
+
+        components: botoesVencedor()
+      });
+
+      await interaction.message.edit({
+        content: `✅ **Partida criada:** ${canal}`,
+        embeds: [],
+        components: []
+      });
+
+      filas.delete(interaction.message.id);
+
+      return;
+    }
+
+    // =========================
+    // SAIR
+    // =========================
+
+    if (interaction.customId === "sair_aposta") {
+
+      const aposta = filas.get(interaction.message.id);
+
+      if (!aposta) {
+        return interaction.reply({
+          content: "❌ Esta fila não está mais ativa.",
+          ephemeral: true
+        });
+      }
+
+      const jogadorId = interaction.user.id;
+
+      if (!aposta.jogadores.has(jogadorId)) {
+        return interaction.reply({
           content: "❌ Você não está na fila.",
           ephemeral: true
         });
       }
 
-      m.jogadores.splice(pos, 1);
+      aposta.jogadores.delete(jogadorId);
 
-      return i.update({
-        embeds: [filaEmbed(m)],
-        components: filaBotoes()
+      return interaction.update({
+        embeds: [painelEmbed(aposta)],
+        components: botoesFila()
       });
     }
 
-    if (i.customId === "time1" || i.customId === "time2") {
-      if (!staff(i.member)) {
-        return i.reply({
+    // =========================
+    // VENCEDOR TIME 1
+    // =========================
+
+    if (interaction.customId === "vencedor_time1") {
+
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
           content: "❌ Apenas staff pode votar.",
           ephemeral: true
         });
       }
 
-      const vencedor =
-        i.customId === "time1" ? "Time 1" : "Time 2";
-
-      return i.reply(`🏆 **${vencedor} venceu!**`);
+      return interaction.reply(
+        "🏆 **Time 1 venceu!**"
+      );
     }
 
-  } catch (e) {
-    console.error(e);
+    // =========================
+    // VENCEDOR TIME 2
+    // =========================
 
-    if (!i.replied && !i.deferred) {
-      i.reply({
-        content: "❌ Ocorreu um erro.",
+    if (interaction.customId === "vencedor_time2") {
+
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({
+          content: "❌ Apenas staff pode votar.",
+          ephemeral: true
+        });
+      }
+
+      return interaction.reply(
+        "🏆 **Time 2 venceu!**"
+      );
+    }
+
+  } catch (erro) {
+
+    console.error("❌ ERRO:", erro);
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "❌ Ocorreu um erro no bot.",
         ephemeral: true
       }).catch(() => {});
     }
