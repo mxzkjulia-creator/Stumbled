@@ -1,17 +1,9 @@
 require("dotenv").config();
 
 const {
-  Client,
-  GatewayIntentBits,
-  SlashCommandBuilder,
-  REST,
-  Routes,
-  PermissionFlagsBits,
-  ChannelType,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
+  Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes,
+  PermissionFlagsBits, ChannelType, EmbedBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle
 } = require("discord.js");
 
 const client = new Client({
@@ -21,17 +13,15 @@ const client = new Client({
 const filas = new Map();
 const partidas = new Map();
 
-const comandos = [
+const commands = [
   new SlashCommandBuilder()
     .setName("painel")
     .setDescription("Criar painel de aposta")
     .addStringOption(o =>
-      o.setName("valor").setDescription("Valor da aposta").setRequired(true)
+      o.setName("valor").setDescription("Valor").setRequired(true)
     )
     .addStringOption(o =>
-      o.setName("modo")
-        .setDescription("Modo")
-        .setRequired(true)
+      o.setName("modo").setDescription("Modo").setRequired(true)
         .addChoices(
           { name: "1v1", value: "1v1" },
           { name: "2v2", value: "2v2" },
@@ -39,9 +29,7 @@ const comandos = [
         )
     )
     .addStringOption(o =>
-      o.setName("plataforma")
-        .setDescription("Plataforma")
-        .setRequired(true)
+      o.setName("plataforma").setDescription("Plataforma").setRequired(true)
         .addChoices(
           { name: "PC", value: "PC" },
           { name: "Mobile", value: "Mobile" },
@@ -57,12 +45,39 @@ const comandos = [
     .setDescription("Cancelar partida")
 ];
 
-function staff(m) {
-  return (
-    m.permissions.has(PermissionFlagsBits.Administrator) ||
-    m.permissions.has(PermissionFlagsBits.ManageChannels)
-  );
-}
+const staff = m =>
+  m.permissions.has(PermissionFlagsBits.Administrator) ||
+  m.permissions.has(PermissionFlagsBits.ManageChannels);
+
+const filaBotoes = () => [
+  new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("entrar")
+      .setLabel("Entrar")
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+
+    new ButtonBuilder()
+      .setCustomId("sair")
+      .setLabel("Sair")
+      .setEmoji("❌")
+      .setStyle(ButtonStyle.Danger)
+  )
+];
+
+const vencedorBotoes = () => [
+  new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("time1")
+      .setLabel("Venceu: Time 1")
+      .setStyle(ButtonStyle.Primary),
+
+    new ButtonBuilder()
+      .setCustomId("time2")
+      .setLabel("Venceu: Time 2")
+      .setStyle(ButtonStyle.Danger)
+  )
+];
 
 function filaEmbed(m) {
   return new EmbedBuilder()
@@ -77,27 +92,18 @@ function filaEmbed(m) {
     );
 }
 
-function filaBotoes() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("entrar")
-        .setLabel("Entrar")
-        .setEmoji("✅")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId("sair")
-        .setLabel("Sair")
-        .setEmoji("❌")
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
-}
-
 function partidaEmbed(m) {
   const meio = Math.ceil(m.jogadores.length / 2);
-  const time1 = m.jogadores.slice(0, meio).map(x => `<@${x}>`).join("\n");
-  const time2 = m.jogadores.slice(meio).map(x => `<@${x}>`).join("\n");
+
+  const time1 = m.jogadores
+    .slice(0, meio)
+    .map(x => `<@${x}>`)
+    .join("\n");
+
+  const time2 = m.jogadores
+    .slice(meio)
+    .map(x => `<@${x}>`)
+    .join("\n");
 
   return new EmbedBuilder()
     .setTitle("🎮 Partida encontrada!")
@@ -110,26 +116,11 @@ function partidaEmbed(m) {
       `🔵 **Time 1**\n${time1}\n\n` +
       `🔴 **Time 2**\n${time2}\n\n` +
       `📜 **Regras**\n` +
-      `• Joguem a partida normalmente.\n` +
+      `• Joguem normalmente.\n` +
       `• Enviem o print do resultado aqui.\n` +
-      `• Somente a staff pode confirmar o vencedor.\n` +
-      `• Se alguém ficar 3 minutos sem responder, chame a staff.`
+      `• Somente staff confirma o vencedor.\n` +
+      `• Após 3 minutos sem resposta, chame a staff.`
     );
-}
-
-function vencedorBotoes() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("time1")
-        .setLabel("Venceu: Time 1")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("time2")
-        .setLabel("Venceu: Time 2")
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
 }
 
 async function criarPartida(m, guild) {
@@ -138,6 +129,7 @@ async function criarPartida(m, guild) {
       id: guild.roles.everyone.id,
       deny: [PermissionFlagsBits.ViewChannel]
     },
+
     {
       id: m.mediador,
       allow: [
@@ -146,6 +138,7 @@ async function criarPartida(m, guild) {
         PermissionFlagsBits.ReadMessageHistory
       ]
     },
+
     {
       id: client.user.id,
       allow: [
@@ -168,7 +161,7 @@ async function criarPartida(m, guild) {
     });
   }
 
-  return await guild.channels.create({
+  return guild.channels.create({
     name: `🔒・partida-${m.modo}`,
     type: ChannelType.GuildText,
     permissionOverwrites: permissoes
@@ -187,4 +180,179 @@ client.once("ready", async () => {
       process.env.GUILD_ID
     ),
     {
-      body: comandos.map
+      body: commands.map(x => x.toJSON())
+    }
+  );
+
+  console.log("✅ Comandos registrados!");
+});
+
+client.on("interactionCreate", async i => {
+  try {
+
+    if (i.isChatInputCommand() && i.commandName === "painel") {
+      if (!staff(i.member)) {
+        return i.reply({
+          content: "❌ Apenas staff pode usar.",
+          ephemeral: true
+        });
+      }
+
+      const modo = i.options.getString("modo");
+
+      const m = {
+        valor: i.options.getString("valor"),
+        modo,
+        plataforma: i.options.getString("plataforma"),
+        mapa: i.options.getString("mensagem"),
+        max: modo === "1v1" ? 2 : modo === "2v2" ? 4 : 6,
+        jogadores: [],
+        mediador: i.user.id
+      };
+
+      const msg = await i.channel.send({
+        embeds: [filaEmbed(m)],
+        components: filaBotoes()
+      });
+
+      filas.set(msg.id, m);
+
+      return i.reply({
+        content: "✅ Painel criado!",
+        ephemeral: true
+      });
+    }
+
+    if (i.isChatInputCommand() && i.commandName === "cancelar") {
+      if (!staff(i.member)) {
+        return i.reply({
+          content: "❌ Apenas staff pode cancelar.",
+          ephemeral: true
+        });
+      }
+
+      const m = partidas.get(i.channel.id);
+
+      if (!m) {
+        return i.reply({
+          content: "❌ Este canal não é uma partida.",
+          ephemeral: true
+        });
+      }
+
+      await i.reply("🔒 Partida cancelada. Fechando...");
+
+      partidas.delete(i.channel.id);
+
+      setTimeout(() => {
+        i.channel.delete().catch(() => {});
+      }, 1500);
+
+      return;
+    }
+
+    if (!i.isButton()) return;
+
+    if (i.customId === "entrar" || i.customId === "sair") {
+      const m = filas.get(i.message.id);
+
+      if (!m) {
+        return i.reply({
+          content: "❌ Esta fila não está mais ativa.",
+          ephemeral: true
+        });
+      }
+
+      const id = String(i.user.id);
+
+      if (i.customId === "entrar") {
+        if (m.jogadores.includes(id)) {
+          return i.reply({
+            content: "❌ Você já está na fila.",
+            ephemeral: true
+          });
+        }
+
+        if (m.jogadores.length >= m.max) {
+          return i.reply({
+            content: "❌ A partida já está cheia.",
+            ephemeral: true
+          });
+        }
+
+        m.jogadores.push(id);
+
+        if (m.jogadores.length < m.max) {
+          return i.update({
+            embeds: [filaEmbed(m)],
+            components: filaBotoes()
+          });
+        }
+
+        await i.deferUpdate();
+
+        const canal = await criarPartida(m, i.guild);
+
+        partidas.set(canal.id, m);
+
+        await canal.send({
+          content: m.jogadores.map(x => `<@${x}>`).join(" "),
+          embeds: [partidaEmbed(m)],
+          components: vencedorBotoes()
+        });
+
+        await i.message.edit({
+          content: `✅ Partida criada: ${canal}`,
+          embeds: [],
+          components: []
+        });
+
+        filas.delete(i.message.id);
+
+        return;
+      }
+
+      const pos = m.jogadores.indexOf(id);
+
+      if (pos < 0) {
+        return i.reply({
+          content: "❌ Você não está na fila.",
+          ephemeral: true
+        });
+      }
+
+      m.jogadores.splice(pos, 1);
+
+      return i.update({
+        embeds: [filaEmbed(m)],
+        components: filaBotoes()
+      });
+    }
+
+    if (i.customId === "time1" || i.customId === "time2") {
+      if (!staff(i.member)) {
+        return i.reply({
+          content: "❌ Apenas staff pode votar.",
+          ephemeral: true
+        });
+      }
+
+      const vencedor =
+        i.customId === "time1" ? "Time 1" : "Time 2";
+
+      return i.reply(`🏆 **${vencedor} venceu!**`);
+    }
+
+  } catch (e) {
+    console.error(e);
+
+    if (!i.replied && !i.deferred) {
+      i.reply({
+        content: "❌ Ocorreu um erro.",
+        ephemeral: true
+      }).catch(() => {});
+    }
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);
